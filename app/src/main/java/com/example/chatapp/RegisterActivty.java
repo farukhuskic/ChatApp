@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import com.example.chatapp.utils.RSAUtils;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.AuthResult;
@@ -20,7 +21,9 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.rengwuxian.materialedittext.MaterialEditText;
 
+import java.math.BigInteger;
 import java.util.HashMap;
+import java.util.List;
 
 public class RegisterActivty extends AppCompatActivity {
 
@@ -29,6 +32,7 @@ public class RegisterActivty extends AppCompatActivity {
 
     FirebaseAuth firebaseAuth;
     DatabaseReference databaseReference;
+    DatabaseReference rsaKeysDatabaseReference;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,6 +92,8 @@ public class RegisterActivty extends AppCompatActivity {
                             hashMap.put("username", username);
                             hashMap.put("imageUrl", "default");
 
+                            generateRsaPublicAndPrivateKey(userId);
+
                             databaseReference.setValue(hashMap).addOnCompleteListener(new OnCompleteListener<Void>() {
                                 @Override
                                 public void onComplete(@NonNull Task<Void> task) {
@@ -109,4 +115,34 @@ public class RegisterActivty extends AppCompatActivity {
 
     }
 
+    private void generateRsaPublicAndPrivateKey(String userId) {
+        rsaKeysDatabaseReference = FirebaseDatabase
+                .getInstance()
+                .getReference();
+
+        HashMap<String, Object> hashMap = new HashMap<>();
+        List<BigInteger> userKeys = RSAUtils.generateKeys();
+        if ((userKeys == null) || (userKeys.isEmpty())) {
+            return;
+        }
+        if (userId != null) {
+            hashMap.put("userId", userId);
+        }
+        if (userKeys.get(0) != null) {
+            hashMap.put("n", userKeys.get(0).toString());
+        }
+        if (userKeys.get(1) != null) {
+            hashMap.put("publicKey", userKeys.get(1).toString());
+        }
+        rsaKeysDatabaseReference.child("PublicKeys").push().setValue(hashMap);
+
+        hashMap.clear();
+        if (userId != null) {
+            hashMap.put("userId", userId);
+        }
+        if (userKeys.get(2) != null) {
+            hashMap.put("privateKey", userKeys.get(2).toString());
+        }
+        rsaKeysDatabaseReference.child("PrivateKeys").push().setValue(hashMap);
+    }
 }

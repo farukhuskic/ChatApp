@@ -17,7 +17,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.example.chatapp.adapters.MessageAdapter;
 import com.example.chatapp.model.Message;
+import com.example.chatapp.model.PublicKey;
 import com.example.chatapp.model.User;
+import com.example.chatapp.utils.RSAUtils;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
@@ -26,6 +28,7 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,11 +37,19 @@ import de.hdodenhof.circleimageview.CircleImageView;
 
 public class MessageActivity extends AppCompatActivity {
 
+    private static String ENCRYPTED_MESSAGE_TYPE_S = "S";
+    private static String ENCRYPTED_MESSAGE_TYPE_R = "R";
+
     CircleImageView profileImage;
     TextView username;
 
     FirebaseUser firebaseUser;
     DatabaseReference databaseReference;
+    DatabaseReference keyDatabaseReference;
+    String currentUserPublicKey;
+    String currentUserN;
+    String currentReceiverPublicKey;
+    String currentReceiverN;
 
     ImageButton buttonSend;
     EditText textSend;
@@ -82,12 +93,46 @@ public class MessageActivity extends AppCompatActivity {
 
         firebaseUser = FirebaseAuth.getInstance().getCurrentUser();
 
+        keyDatabaseReference = FirebaseDatabase
+                .getInstance()
+                .getReference("PublicKeys");
+        keyDatabaseReference.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                    PublicKey publicKey = snapshot.getValue(PublicKey.class);
+                    if ((publicKey == null) || (firebaseUser == null) || (firebaseUser.getUid() == null) || (userId == null)) {
+                        continue;
+                    }
+                    if ((publicKey.getUserId() != null) && publicKey.getUserId().equals(firebaseUser.getUid())) {
+                        currentUserPublicKey = publicKey.getPublicKey();
+                        currentUserN = publicKey.getN();
+                    }
+                    if ((publicKey.getUserId() != null) && publicKey.getUserId().equals(userId)) {
+                        currentReceiverPublicKey = publicKey.getPublicKey();
+                        currentReceiverN = publicKey.getN();
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+
+            }
+        });
+
+
+
         buttonSend.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 String message = textSend.getText().toString();
-                if (!message.equals("")) {
-                    sendMessage(firebaseUser.getUid(), userId, message);
+                if ((message != null) && !message.equals("")) {
+                    sendMessage(firebaseUser.getUid(), userId, message, null, "Chats");
+                    String currentUserEncryptedMessage = encryptMessage(message, currentUserPublicKey, currentUserN);
+                    sendMessage(firebaseUser.getUid(), userId, currentUserEncryptedMessage, ENCRYPTED_MESSAGE_TYPE_S, "EncryptedChats");
+                    String currentReceiverEncryptedMessage = encryptMessage(message, currentReceiverPublicKey, currentReceiverN);
+                    sendMessage(firebaseUser.getUid(), userId, currentReceiverEncryptedMessage, ENCRYPTED_MESSAGE_TYPE_R, "EncryptedChats");
                 } else {
                     Toast.makeText(MessageActivity.this, "You can't send empty message", Toast.LENGTH_SHORT).show();
                 }
@@ -121,17 +166,31 @@ public class MessageActivity extends AppCompatActivity {
         });
     }
 
-    private void sendMessage(String sender, String receiver, String message) {
+    private void sendMessage(String sender, String receiver, String message, String type, String database) {
         DatabaseReference databaseReference = FirebaseDatabase
                                                 .getInstance()
                                                 .getReference();
 
+        if (database == null) {
+            return;
+        }
         HashMap<String, Object> hashMap = new HashMap<>();
-        hashMap.put("sender", sender);
-        hashMap.put("receiver", receiver);
-        hashMap.put("message", message);
+        if (database.equals("Chats")) {
+            hashMap.put("sender", sender);
+            hashMap.put("receiver", receiver);
+            hashMap.put("message", message);
+        } else {
+            hashMap.put("sender", sender);
+            hashMap.put("receiver", receiver);
+            hashMap.put("encryptedMessage", message);
+            hashMap.put("encryptionType", type);
+        }
 
-        databaseReference.child("Chats").push().setValue(hashMap);
+        databaseReference.child(database).push().setValue(hashMap);
+    }
+
+    private String encryptMessage(String message, String key, String n) {
+        return RSAUtils.encrypt(message.getBytes() , new BigInteger(key), new BigInteger(n)).toString();
     }
 
     private void readMessages(final String myId, final String userId, final String imageUrl) {

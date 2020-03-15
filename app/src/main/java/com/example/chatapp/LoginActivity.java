@@ -60,7 +60,6 @@ public class LoginActivity extends AppCompatActivity {
                                     startActivity(intent);
                                     finish();
                                 } else {
-                                    // Toast.makeText(LoginActivity.this, "Authenticaion failed", Toast.LENGTH_SHORT).show();
                                     Toast.makeText(LoginActivity.this, task.getException().getMessage(), Toast.LENGTH_SHORT).show();
                                     Log.d("tag", task.getException().getMessage());
                                 }
